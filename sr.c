@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "emulator.h"
-#include "gbn.h"
+#include "sr.h"
 
-
+/* gcc -Wall -ansi -pedantic -o sr emulator.c sr.c */
 
 /* ******************************************************************
    Go Back N protocol.  Adapted from J.F.Kurose
