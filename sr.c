@@ -180,19 +180,31 @@ void A_input(struct pkt packet)
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
 {
-  int i;
+  int i, idx;
+  bool timer_started = false;
 
   if (TRACE > 0)
-    printf("----A: time out,resend packets!\n");
+    printf("----A: timer interrupt!\n");
 
-  for(i=0; i<windowcount; i++) {
+  /* Resend only the packet whose timer expired */
+  /* Find the packet with expired timer and resend */
+  
+  /* Attempt to resend the oldest unacknowledged packet and restart its timer */
 
-    if (TRACE > 0)
-      printf ("---A: resending packet %d\n", (buffer[(windowfirst+i) % WINDOWSIZE]).seqnum);
-
-    tolayer3(A,buffer[(windowfirst+i) % WINDOWSIZE]);
-    packets_resent++;
-    if (i==0) starttimer(A,RTT);
+  for (i = 0; i < windowcount; i++) {
+    idx = (windowfirst + i) % WINDOWSIZE;
+    if (!ack_received[buffer[idx].seqnum]) {
+      if (TRACE > 0)
+        printf("---A: resending packet %d\n", buffer[idx].seqnum);
+      
+      tolayer3(A, buffer[idx]);
+      packets_resent++;
+      
+      /* Restart timer for this packet */
+      starttimer(A, RTT);
+      timer_started = true;
+      break;
+    }
   }
 }       
 
