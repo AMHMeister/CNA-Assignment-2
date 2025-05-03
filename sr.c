@@ -222,6 +222,14 @@ void A_init(void)
 		     so initially this is set to -1
 		   */
   windowcount = 0;
+
+  for (int i = 0; i < SEQSPACE; i++) {
+    ack_received[i] = false; /* Initialise all ACKs to false */
+  }
+
+  for (int i = 0; i < WINDOWSIZE; i++) {
+    timer_active[i] = false; /* Initialise all timers to inactive */
+  }
 }
 
 
