@@ -239,6 +239,10 @@ void A_init(void)
 static int expectedseqnum; /* the sequence number expected next by the receiver */
 static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
 
+static struct pkt recv_buffer[WINDOWSIZE]; /* buffer for packets that are out of order */
+static int recv_base;                      /* base seq num of receive window */
+static bool packet_received[SEQSPACE];     /* track packets that have been received */
+static int recv_windowsize;                /* size of the receive window */
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
