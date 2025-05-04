@@ -118,22 +118,22 @@ void A_output(struct msg message)
 */
 void A_input(struct pkt packet)
 {
-  int ackcount = 0;
   int i, idx; /* idx to keep track of packet index */
-  bool can_slide = true; /* flag to check if window can slide */
+  /* to check if ack is for packet in current window */
+  int seqfirst = buffer[windowfirst].seqnum;
+  int seqlast = buffer[windowlast].seqnum;
 
+  bool in_window = false;
   /* if received ACK is not corrupted */ 
   if (!IsCorrupted(packet)) {
     if (TRACE > 0)
       printf("----A: uncorrupted ACK %d is received\n",packet.acknum);
     total_ACKs_received++;
 
-    /* check if ack is for packet in current window */
-    int seqfirst = buffer[windowfirst].seqnum;
-    int seqlast = buffer[windowlast].seqnum;
+    
 
     /* Check if ACK is in current window (handling wrap-around) */
-    bool in_window = false;
+    
     if (seqfirst <= seqlast) {
       in_window = (packet.acknum >= seqfirst && packet.acknum <= seqlast);
     } else {
@@ -181,7 +181,7 @@ void A_input(struct pkt packet)
 void A_timerinterrupt(void)
 {
   int i, idx;
-  bool timer_started = false;
+  
 
   if (TRACE > 0)
     printf("----A: timer interrupt!\n");
@@ -202,7 +202,7 @@ void A_timerinterrupt(void)
       
       /* Restart timer for this packet */
       starttimer(A, RTT);
-      timer_started = true;
+      timer_active[idx] = true; /* Mark timer as active */
       break;
     }
   }
@@ -214,6 +214,8 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
+  int i;
+  int t; /* for loop index */
   /* initialise A's window, buffer and sequence number */
   A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
   windowfirst = 0;
@@ -222,13 +224,14 @@ void A_init(void)
 		     so initially this is set to -1
 		   */
   windowcount = 0;
-
-  for (int i = 0; i < SEQSPACE; i++) {
+  
+  for (i = 0; i < SEQSPACE; i++) {
     ack_received[i] = false; /* Initialise all ACKs to false */
   }
 
-  for (int i = 0; i < WINDOWSIZE; i++) {
-    timer_active[i] = false; /* Initialise all timers to inactive */
+  
+  for (t = 0; t < WINDOWSIZE; t++) {
+    timer_active[t] = false; /* Initialise all timers to inactive */
   }
 }
 
@@ -250,6 +253,7 @@ void B_input(struct pkt packet)
   struct pkt sendpkt;
   int i;
   int rel_seqnum; /* Relative sequence number in the receive window */
+  int j = 0;
 
   /* if not corrupted */
   if (!IsCorrupted(packet)) {
@@ -277,7 +281,7 @@ void B_input(struct pkt packet)
         packets_received++;
         
         /* Update recv_base and deliver any consecutive buffered packets */
-        int j = 0;
+        
         do {
           recv_base = (recv_base + 1) % SEQSPACE;
           j++;
