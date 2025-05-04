@@ -164,7 +164,7 @@ void A_input(struct pkt packet)
       
       /* Check if we can slide the window */
       while (windowcount > 0 && ack_received[buffer[windowfirst].seqnum]) {
-        /* Remove this packet from the window after ack received */
+        /* Remove this packet from the window after ack received*/
         windowfirst = (windowfirst + 1) % WINDOWSIZE;
         windowcount--;
       }
@@ -180,8 +180,8 @@ void A_input(struct pkt packet)
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
 {
-  int i, idx;
-  
+  int i, idx; /* idx to keep track of packet index */
+  bool timer_started = false;
 
   if (TRACE > 0)
     printf("----A: timer interrupt!\n");
@@ -202,7 +202,23 @@ void A_timerinterrupt(void)
       
       /* Restart timer for this packet */
       starttimer(A, RTT);
+      timer_active[idx] = true; 
+      timer_started = true;
       break;
+    }
+  }
+
+  /* Safety check to make sure at least there is one packet with a timer*/
+  if (!timer_started && windowcount > 0){
+    for (i=0; i < windowcount; i++) {
+      idx = (windowfirst + i) % WINDOWSIZE;
+      if (!ack_received[buffer[idx].seqnum]) {
+        starttimer(A, RTT); 
+        timer_active[idx] = true; 
+        if (TRACE > 0)
+          printf("----A: Timer started for packet %d\n", buffer[idx].seqnum);
+        break;
+      }
     }
   }
 }       
