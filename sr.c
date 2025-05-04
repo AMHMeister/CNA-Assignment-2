@@ -4,7 +4,7 @@
 #include "emulator.h"
 #include "sr.h"
 
-/* gcc -Wall -ansi -pedantic -o sr emulator.c sr.c */
+/* Compile Command: gcc -Wall -ansi -pedantic -o sr emulator.c sr.c */
 
 /* ******************************************************************
    Go Back N protocol.  Adapted from J.F.Kurose
@@ -86,7 +86,7 @@ void A_output(struct msg message)
     sendpkt.checksum = ComputeChecksum(sendpkt); 
 
     /* put packet in window buffer */
-    /* windowlast will always be 0 for alternating bit; but not for GoBackN */
+    
     windowlast = (windowlast + 1) % WINDOWSIZE; 
     buffer[windowlast] = sendpkt;
     windowcount++;
@@ -107,7 +107,7 @@ void A_output(struct msg message)
     /* get next sequence number, wrap back to 0 */
     A_nextseqnum = (A_nextseqnum + 1) % SEQSPACE;  
   }
-  /* if blocked,  window is full */
+  /* if blocked, window is full */
   else {
     if (TRACE > 0)
       printf("----A: New message arrives, send window is full\n");
@@ -161,7 +161,7 @@ void A_input(struct pkt packet)
     	/* slide window by number of acked packets  */
         windowfirst = (windowfirst+1) % WINDOWSIZE;
 
-        /* delete acked packets from the window buffer */
+      /* delete acked packets from the window buffer */
     	windowcount--;
       }
 
@@ -208,7 +208,7 @@ void A_init(void)
 		     new packets are placed in winlast + 1 
 		     so initially this is set to -1
 		   */
-  windowcount = 0;
+  windowcount = 0; /* Initialise window count */
 }
 
 
@@ -236,11 +236,9 @@ void B_input(struct pkt packet)
     if (TRACE > 0)
       printf("----B: packet %d is correctly received, send ACK!\n",packet.seqnum);
     packets_received++;
-
+    
     /* buffer out-of-order packets */
-
     /* deliver ACKs in any order, regardless of buffered status */
-
     /* advance window to next unreceived packet */
 
     seq_count = packet.seqnum - expectedseqnum;
@@ -255,16 +253,15 @@ void B_input(struct pkt packet)
     	tolayer5(B, recv_buffer[B_windowfirst].payload);
 
     	recv_buffer[B_windowfirst].seqnum = NOTINUSE;
-    	B_windowfirst = (B_windowfirst+1) % WINDOWSIZE;
+    	B_windowfirst = (B_windowfirst + 1) % WINDOWSIZE;
 
     	/* update state variables */
-    	expectedseqnum = (expectedseqnum+1) % SEQSPACE;
+    	expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
       }
     }
-
     /* create packet */
-
     /* send an ACK for received packet */
+
     send_pkt.acknum = packet.seqnum;
 
     send_pkt.seqnum = B_nextseqnum;
@@ -289,10 +286,10 @@ void B_init(void)
   B_nextseqnum = 1;
 
   
-  for (i=0;i<WINDOWSIZE;i++) {
+  for ( i=0;i < WINDOWSIZE; i++) {
 	  recv_buffer[i].seqnum = NOTINUSE;
   }
-  B_windowfirst = 0;
+  B_windowfirst = 0; /* initialise index of first packet */
 }
 
 /******************************************************************************
