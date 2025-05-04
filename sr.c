@@ -26,7 +26,7 @@
 
 #define RTT  16.0       /* round trip time.  MUST BE SET TO 16.0 when submitting assignment */
 #define WINDOWSIZE 6    /* the maximum number of buffered unacked packet */
-#define SEQSPACE 14      /* min seq space for SR must be atleast window size * 2, made it 14 */
+#define SEQSPACE 12      /* min seq space for SR must be atleast window size * 2 */
 #define NOTINUSE (-1)   /* used to fill header fields that are not being used */
 
 /* generic procedure to compute the checksum of a packet.  Used by both sender and receiver  
@@ -63,10 +63,11 @@ static int windowfirst, windowlast;    /* array indexes of the first/last packet
 static int windowcount;                /* the number of packets currently awaiting an ACK */
 static int A_nextseqnum;               /* the next sequence number to be used by the sender */
 
-static bool ack_received[SEQSPACE]; /* track packets that have been ACKed */
-static bool timer_active[WINDOWSIZE]; /* track active timers */
+static int ACKed[WINDOWSIZE];            /* array for storing acked packets */
 
 /* called from layer 5 (application layer), passed the message to be sent to other side */
+
+
 void A_output(struct msg message)
 {
   struct pkt sendpkt;
@@ -90,7 +91,7 @@ void A_output(struct msg message)
     buffer[windowlast] = sendpkt;
     windowcount++;
 
-    ack_received[sendpkt.seqnum] = false; /* mark packet as not ACKed */
+    ACKed[windowlast] = 0; /* sign non acked packets with 0 */
 
     /* send out packet */
     if (TRACE > 0)
@@ -98,8 +99,10 @@ void A_output(struct msg message)
     tolayer3 (A, sendpkt);
 
     /* start timer for specific packet */
-    starttimer(A,RTT);
-    timer_active[windowlast] = true; /* mark timer as active */
+    if (windowcount == 1) 
+      starttimer(A, RTT); 
+      
+    
 
     /* get next sequence number, wrap back to 0 */
     A_nextseqnum = (A_nextseqnum + 1) % SEQSPACE;  
@@ -118,109 +121,79 @@ void A_output(struct msg message)
 */
 void A_input(struct pkt packet)
 {
-  int i, idx; /* idx to keep track of packet index */
-  /* to check if ack is for packet in current window */
-  int seqfirst = buffer[windowfirst].seqnum;
-  int seqlast = buffer[windowlast].seqnum;
+  int ack_count = 0;
+  int seq_count;
+  int expected_ACK;
 
-  bool in_window = false;
-  /* if received ACK is not corrupted */ 
+  /* if received ACK is not corrupted */
   if (!IsCorrupted(packet)) {
     if (TRACE > 0)
       printf("----A: uncorrupted ACK %d is received\n",packet.acknum);
     total_ACKs_received++;
 
-    
+    /* mark pkt as received */
 
-    /* Check if ACK is in current window (handling wrap-around) */
-    
-    if (seqfirst <= seqlast) {
-      in_window = (packet.acknum >= seqfirst && packet.acknum <= seqlast);
-    } else {
-      in_window = (packet.acknum >= seqfirst || packet.acknum <= seqlast);
+    /* Advance window base to next unacked if the packet is the first one in the window*/
+    expected_ACK = A_nextseqnum - windowcount;
+    if (expected_ACK < 0) {
+      expected_ACK = expected_ACK + SEQSPACE;
     }
 
-    if (in_window && !ack_received[packet.acknum]) {
-      /* New ACK for a packet in the window */
+    seq_count = packet.acknum - expected_ACK;
+    if (seq_count < 0) {
+      seq_count = seq_count + SEQSPACE;
+    }
+
+    /* check if ack is new or a duplicate */
+    if ((windowcount > 0) && (seq_count < WINDOWSIZE)) {
+
+      /* if packet is a new ack */
       if (TRACE > 0)
-        printf("----A: ACK %d is for a packet in our window\n", packet.acknum);
+        printf("----A: ACK %d is not a duplicate\n",packet.acknum);
       new_ACKs++;
-      
-      /* Find buffer index of this packet */
-      for (i = 0; i < windowcount; i++) {
-        idx = (windowfirst + i) % WINDOWSIZE;
-        if (buffer[idx].seqnum == packet.acknum) {
-          /* Mark packet as acknowledged */
-          ack_received[packet.acknum] = true;
-          
-          /* Stop the timer for this packet */
-          if (timer_active[idx]) {
-            stoptimer(A);
-            timer_active[idx] = false; /* Mark timer as inactive */
-          }
-          break;
-        }
+
+      ack_count = (seq_count + windowfirst) % WINDOWSIZE;
+      ACKed[ack_count] = NOTINUSE;
+
+      /* slide window */
+      while ((ACKed[windowfirst] == NOTINUSE) && (windowcount >0)) {
+
+    	/* slide window by number of acked packets  */
+        windowfirst = (windowfirst+1) % WINDOWSIZE;
+
+        /* delete acked packets from the window buffer */
+    	windowcount--;
       }
-      
-      /* Check if we can slide the window */
-      while (windowcount > 0 && ack_received[buffer[windowfirst].seqnum]) {
-        /* Remove this packet from the window after ack received*/
-        windowfirst = (windowfirst + 1) % WINDOWSIZE;
-        windowcount--;
+
+      /* start timer again if there are more unacked packets in the window */
+      if (seq_count == 0) {
+        stoptimer(A);
+    	if (windowcount > 0)
+    	  starttimer (A,RTT);
       }
-    }
-    else if (TRACE > 0)
-      printf("----A: duplicate ACK or ACK outside window received, do nothing!\n");
-  }
-  else 
-    if (TRACE > 0)
-      printf("----A: corrupted ACK is received, do nothing!\n");
+
+    } else
+    	if (TRACE > 0)
+    	  printf ("----A:duplicate ACK received, do nothing!\n");
+  } else
+	  if (TRACE>0)
+	    printf ("----A:corrupted ACK is received, do nothing!\n");
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
 {
-  int i, idx; /* idx to keep track of packet index */
-  bool timer_started = false;
+  if (TRACE > 0)
+    printf("----A: time out,resend packets!\n");
 
   if (TRACE > 0)
-    printf("----A: timer interrupt!\n");
+    printf ("---A: resending packet %d\n", (buffer[windowfirst]).seqnum);
 
-  /* Resend only the packet whose timer expired */
-  /* Find the packet with expired timer and resend */
-  
-  /* Attempt to resend the oldest unacknowledged packet and restart its timer */
-
-  for (i = 0; i < windowcount; i++) {
-    idx = (windowfirst + i) % WINDOWSIZE;
-    if (!ack_received[buffer[idx].seqnum]) {
-      if (TRACE > 0)
-        printf("---A: resending packet %d\n", buffer[idx].seqnum);
-      
-      tolayer3(A, buffer[idx]);
-      packets_resent++;
-      
-      /* Restart timer for this packet */
-      starttimer(A, RTT);
-      timer_active[idx] = true; 
-      timer_started = true;
-      break;
-    }
-  }
-
-  /* Safety check to make sure at least there is one packet with a timer*/
-  if (!timer_started && windowcount > 0){
-    for (i=0; i < windowcount; i++) {
-      idx = (windowfirst + i) % WINDOWSIZE;
-      if (!ack_received[buffer[idx].seqnum]) {
-        starttimer(A, RTT); 
-        timer_active[idx] = true; 
-        if (TRACE > 0)
-          printf("----A: Timer started for packet %d\n", buffer[idx].seqnum);
-        break;
-      }
-    }
-  }
+  /* only resend the oldest packet in window*/
+  tolayer3 (A,buffer[windowfirst]);
+  packets_resent++;
+  if (windowcount > 0)
+      starttimer(A,RTT);
 }       
 
 
@@ -228,8 +201,6 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
-  int i;
-  int t; /* for loop index */
   /* initialise A's window, buffer and sequence number */
   A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
   windowfirst = 0;
@@ -238,15 +209,6 @@ void A_init(void)
 		     so initially this is set to -1
 		   */
   windowcount = 0;
-  
-  for (i = 0; i < SEQSPACE; i++) {
-    ack_received[i] = false; /* Initialise all ACKs to false */
-  }
-
-  
-  for (t = 0; t < WINDOWSIZE; t++) {
-    timer_active[t] = false; /* Initialise all timers to inactive */
-  }
 }
 
 
