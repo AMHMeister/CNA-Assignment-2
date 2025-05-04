@@ -219,104 +219,80 @@ static int expectedseqnum; /* the sequence number expected next by the receiver 
 static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
 
 static struct pkt recv_buffer[WINDOWSIZE]; /* buffer for packets that are out of order */
-static int recv_base;                      /* base seq num of receive window */
-static bool packet_received[SEQSPACE];     /* track packets that have been received */
-static int recv_windowsize;                /* size of the receive window */
+static int B_windowfirst;           /* the index of the first packet in B_buffer */
+int i;
+
+
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
-  struct pkt sendpkt;
+  struct pkt send_pkt;
   int i;
-  int rel_seqnum; /* Relative sequence number in the receive window */
-  int j = 0;
+  int seq_count;
 
-  /* if not corrupted */
-  if (!IsCorrupted(packet)) {
+  /* if uncorrupted */
+  if  ( (!IsCorrupted(packet)) ) {
     if (TRACE > 0)
-      printf("----B: packet %d correctly received\n", packet.seqnum);
-    
-    /* Calculate relative sequence number ( aka distance from recv_base) */
-    if (packet.seqnum >= recv_base)
-      rel_seqnum = packet.seqnum - recv_base;
-    else
-      rel_seqnum = SEQSPACE - recv_base + packet.seqnum;
-    
-    /* Check if packet is within receive window */
-    if (rel_seqnum < recv_windowsize) {
-      /* Mark packet as received if condition is met*/
-      packet_received[packet.seqnum] = true;
-      
-      /* Store packet in buffer */
-      recv_buffer[rel_seqnum] = packet;
-      
-      /* If the packet is what we're expecting next, deliver it and any consecutive buffered packets */
-      if (packet.seqnum == recv_base) {
-        /* Deliver packet */
-        tolayer5(B, packet.payload);
-        packets_received++;
-        
-        /* Update recv_base and deliver any consecutive buffered packets */
-        
-        do {
-          recv_base = (recv_base + 1) % SEQSPACE;
-          j++;
-          
-          /* Check if next packet is already buffered */
-          if (packet_received[recv_base]) {
-            /* Deliver packet */
-            tolayer5(B, recv_buffer[(j % recv_windowsize)].payload);
-            packets_received++;
-            packet_received[recv_base] = false; /* Reset flag for later */
-          } else {
-            break; /* No more consecutive packets */
-          }
-        } while (true);
+      printf("----B: packet %d is correctly received, send ACK!\n",packet.seqnum);
+    packets_received++;
+
+    /* buffer out-of-order packets */
+
+    /* deliver ACKs in any order, regardless of buffered status */
+
+    /* advance window to next unreceived packet */
+
+    seq_count = packet.seqnum - expectedseqnum;
+    if (seq_count < 0)
+      seq_count = seq_count + SEQSPACE;
+
+    if (seq_count < WINDOWSIZE) {
+      recv_buffer[((B_windowfirst + seq_count) % WINDOWSIZE)] = packet;
+      while (recv_buffer[B_windowfirst].seqnum != NOTINUSE) {
+
+    	/* deliver to application */
+    	tolayer5(B, recv_buffer[B_windowfirst].payload);
+
+    	recv_buffer[B_windowfirst].seqnum = NOTINUSE;
+    	B_windowfirst = (B_windowfirst+1) % WINDOWSIZE;
+
+    	/* update state variables */
+    	expectedseqnum = (expectedseqnum+1) % SEQSPACE;
       }
     }
-    
-    /* Send ACK for the packet */
-    sendpkt.acknum = packet.seqnum;
+
+    /* create packet */
+
+    /* send an ACK for received packet */
+    send_pkt.acknum = packet.seqnum;
+
+    send_pkt.seqnum = B_nextseqnum;
+    B_nextseqnum = (B_nextseqnum + 1) % 2;
+
+    /* fill payload with 0's if there is no data to send */
+    for ( i=0; i<20 ; i++ )
+      send_pkt.payload[i] = '0';
+
+    /* compute checksum */
+    send_pkt.checksum = ComputeChecksum(send_pkt);
+
+    /* send out packet */
+    tolayer3 (B, send_pkt);
   }
   
-  else {
-    /* Packet is corrupted, do not ACK */
-    if (TRACE > 0) 
-      printf("----B: packet corrupted, no ACK sent\n");
-    return; /* No NAKs in SR */
-  }
-
-  /* Create ACK packet */
-  sendpkt.seqnum = B_nextseqnum;
-  B_nextseqnum = (B_nextseqnum + 1) % 2;
-    
-  /* No data to send. Fill payload with 0's */
-  for (i = 0; i < 20; i++) 
-    sendpkt.payload[i] = '0';  
-
-  /* Compute checksum */
-  sendpkt.checksum = ComputeChecksum(sendpkt); 
-
-  /* Send packet */
-  if (TRACE > 0)
-    printf("----B: sending ACK %d\n", sendpkt.acknum);
-  tolayer3(B, sendpkt);
 }
 
 void B_init(void)
 {
-  int i;
+  expectedseqnum = 0;
+  B_nextseqnum = 1;
 
-  expectedseqnum = 0; 
-  B_nextseqnum = 0;  
-
-  recv_base = 0;      
-  recv_windowsize = WINDOWSIZE; 
-
-  for (i = 0; i < SEQSPACE; i++) {
-    packet_received[i] = false; /* Initialise all packets to not received */
+  
+  for (i=0;i<WINDOWSIZE;i++) {
+	  recv_buffer[i].seqnum = NOTINUSE;
   }
-
+  B_windowfirst = 0;
 }
 
 /******************************************************************************
