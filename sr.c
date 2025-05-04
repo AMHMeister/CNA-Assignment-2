@@ -202,12 +202,10 @@ void A_timerinterrupt(void)
       
       /* Restart timer for this packet */
       starttimer(A, RTT);
-      timer_active[idx] = true; /* Mark timer as active */
       break;
     }
   }
 }       
-
 
 
 /* the following routine will be called once (only) before any other */
