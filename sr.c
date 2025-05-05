@@ -165,7 +165,7 @@ void A_input(struct pkt packet)
     	windowcount--;
       }
 
-      /* start timer again if there are more unacked packets in the window */
+      /* restart timer if there are more unacked packets in the window */
       if (seq_count == 0) {
         stoptimer(A);
     	if (windowcount > 0)
@@ -255,7 +255,7 @@ void B_input(struct pkt packet)
     	recv_buffer[B_windowfirst].seqnum = NOTINUSE;
     	B_windowfirst = (B_windowfirst + 1) % WINDOWSIZE;
 
-    	/* update state variables */
+    	/* update next expected seq num */
     	expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
       }
     }
@@ -271,10 +271,10 @@ void B_input(struct pkt packet)
     for ( i=0; i<20 ; i++ )
       send_pkt.payload[i] = '0';
 
-    /* compute checksum */
+    /* compute checksum for packet */
     send_pkt.checksum = ComputeChecksum(send_pkt);
 
-    /* send out packet */
+    /* send packet */
     tolayer3 (B, send_pkt);
   }
   
